@@ -5,7 +5,8 @@ from huggingface_hub import InferenceClient
 
 # Get the directory containing the current script
 script_dir = os.path.dirname(os.path.abspath(__file__))
-default_inp_dir = os.path.join(script_dir, '..', 'units/en')
+# Normalize default input directory (resolve '..' and use native separators)
+default_inp_dir = os.path.normpath(os.path.join(script_dir, '..', 'units', 'en'))
 default_model = "deepseek-ai/DeepSeek-R1"
 default_client = InferenceClient(
 	provider="together",
@@ -19,7 +20,12 @@ def auto_translate(
     model: str = default_model,
     client: InferenceClient = default_client
 ):
-    get_output_path = lambda x: x.replace('/en', f'/{output_lang}')
+    # Build the output path by computing the path relative to the input directory
+    def get_output_path(inp_path: str) -> str:
+        rel = os.path.relpath(inp_path, inp_dir)
+        base_dir = os.path.dirname(inp_dir)
+        out_path = os.path.normpath(os.path.join(base_dir, output_lang, rel))
+        return out_path
     escape_special_tokens = lambda x: x.replace('<think>', '<%%think%%>').replace('</think>', '<%%/think%%>')
     unescape_special_tokens = lambda x: x.replace('<%%think%%>', '<think>').replace('<%%/think%%>', '</think>')
 
@@ -54,7 +60,8 @@ def auto_translate(
                 continue
 
             print(f'[{i+1}/{len(inp_files)}] Processing file: {inp_file}')
-            stream = client.chat.completions.create(
+            try:
+                stream = client.chat.completions.create(
                 model=model,
                 temperature=0.0,
                 messages=[
@@ -62,13 +69,34 @@ def auto_translate(
                 ],
                 stream=True,
             )
+            except Exception as e:
+                print(f"Error creating stream for {inp_file}: {e}")
+                continue
+
             final_text = ""
+            # Stream might yield objects or dicts depending on client version.
             for chunk in stream:
-                print(chunk.choices[0].delta.content, end="")
+                try:
+                    # Try attribute access first
+                    content_piece = getattr(chunk.choices[0].delta, 'content', None)
+                except Exception:
+                    content_piece = None
+                if content_piece is None:
+                    try:
+                        # Fallback to dict-style access
+                        content_piece = chunk['choices'][0]['delta'].get('content')
+                    except Exception:
+                        content_piece = None
+
+                if not content_piece:
+                    continue
+
+                print(content_piece, end="")
                 sys.stdout.flush()
-                final_text += chunk.choices[0].delta.content
-            # Optionally filter <think>...</think> reasoning process
-            final_text = final_text.split('</think>').pop().strip()
+                final_text += content_piece
+
+            # Remove any model-inserted <think>...</think> reasoning blocks if present
+            final_text = re.sub(r"<think>.*?</think>", "", final_text, flags=re.DOTALL).strip()
             # Write the output to the file
             final_text = unescape_special_tokens(final_text)
             write_out_file(out_file, final_text)
