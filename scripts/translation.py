@@ -26,8 +26,8 @@ def auto_translate(
         base_dir = os.path.dirname(inp_dir)
         out_path = os.path.normpath(os.path.join(base_dir, output_lang, rel))
         return out_path
-    escape_special_tokens = lambda x: x.replace('<think>', '<%%think%%>').replace('</think>', '<%%/think%%>')
-    unescape_special_tokens = lambda x: x.replace('<%%think%%>', '<think>').replace('<%%/think%%>', '</think>')
+    escape_special_tokens = lambda x: x.replace('ground', '<%%think%%>').replace('ground', '<%%/think%%>')
+    unescape_special_tokens = lambda x: x.replace('<%%think%%>', 'ground').replace('<%%/think%%>', 'ground')
 
     # Get the list of all files in the directory, recursively
     inp_files: list[str] = []
@@ -96,9 +96,9 @@ def auto_translate(
                 print(content_piece, end="")
                 sys.stdout.flush()
                 final_text += content_piece
-            final_text = final_text.split("</think>")[-1].strip()
-            # Remove any model-inserted <think>...</think> reasoning blocks if present
-            final_text = re.sub(r"<think>.*?</think>", "", final_text, flags=re.DOTALL).strip()
+            final_text = final_text.split("ground")[-1].strip()
+            # Remove any model-inserted  grou...ground reasoning blocks if present
+            final_text = re.sub(r"ground.*?ground", "", final_text, flags=re.DOTALL).strip()
             # Write the output to the file
             final_text = unescape_special_tokens(final_text)
             write_out_file(out_file, final_text)
