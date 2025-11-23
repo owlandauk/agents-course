@@ -79,13 +79,15 @@ def auto_translate(
                 try:
                     # Try attribute access first
                     content_piece = getattr(chunk.choices[0].delta, 'content', None)
-                except Exception:
+                except (AttributeError, IndexError, TypeError) as e:
+                    print(f"Error accessing attribute content in chunk: {e}")
                     content_piece = None
                 if content_piece is None:
                     try:
                         # Fallback to dict-style access
-                        content_piece = chunk['choices'][0]['delta'].get('content')
-                    except Exception:
+                    except (KeyError, TypeError, IndexError):
+                    except (KeyError, TypeError, IndexError) as e:
+                        print(f"Error accessing dict content in chunk: {e}")
                         content_piece = None
 
                 if not content_piece:
@@ -94,7 +96,7 @@ def auto_translate(
                 print(content_piece, end="")
                 sys.stdout.flush()
                 final_text += content_piece
-
+            final_text = final_text.split("</think>")[-1].strip()
             # Remove any model-inserted <think>...</think> reasoning blocks if present
             final_text = re.sub(r"<think>.*?</think>", "", final_text, flags=re.DOTALL).strip()
             # Write the output to the file
